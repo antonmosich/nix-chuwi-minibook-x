@@ -79,6 +79,11 @@ in {
             default = false;
             description = "Enable auto display rotation.";
           };
+          requiredPackages = lib.mkOption {
+            type = lib.types.listOf lib.types.package;
+            default = [pkgs.niri];
+            description = "Packages required for the rotation commands";
+          };
           commands = lib.mkOption {
             type = lib.types.submodule {
               options = {
@@ -125,6 +130,7 @@ in {
       };
       default = {
         enable = true;
+        requiredPackages = [pkgs.niri];
         commands = {
           normal = ''niri msg output "DSI-1" transform normal'';
           bottomUp = ''niri msg output "DSI-1" transform 180'';

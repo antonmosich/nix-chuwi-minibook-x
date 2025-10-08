@@ -19,7 +19,7 @@ in {
         ExecStart = let
           autoDisplayRotationScript = pkgs.writeShellApplication {
             name = "auto-display-rotation";
-            runtimeInputs = with pkgs; [iio-sensor-proxy mawk niri];
+            runtimeInputs = with pkgs; [iio-sensor-proxy mawk] ++ cfg.requiredPackages;
             text = ''
               monitor-sensor | mawk -W interactive '/Accelerometer orientation changed:/ { print $NF; fflush();}' | while read -r line
               do
