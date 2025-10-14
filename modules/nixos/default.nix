@@ -1,11 +1,20 @@
-{nixos-hardware}: {
+{ nixos-hardware }:
+{
   config,
   lib,
   pkgs,
   ...
-}: let
+}:
+let
   cfg = config.hardware.chuwi-minibook-x;
-in {
+  chuwi-ltsm-hack = pkgs.callPackage ../../pkgs/tablet-mode-kernel-module.nix {
+    kernel = config.boot.kernelPackages.kernel;
+  };
+  chuwi-dual-accel = pkgs.callPackage ../../pkgs/tablet-mode-platform-driver-module.nix {
+    kernel = config.boot.kernelPackages.kernel;
+  };
+in
+{
   imports = [
     nixos-hardware.nixosModules.chuwi-minibook-x
     ./udev-rules.nix
@@ -14,6 +23,18 @@ in {
   ];
 
   options.hardware.chuwi-minibook-x = {
+    driver = lib.mkOption {
+      type = lib.types.enum [
+        "platform"
+        "hack"
+      ];
+      default = "platform";
+      description = ''
+        Which kernel module to use. "hack" works without recompiling the kernel,
+        "platform" requires compilation.
+      '';
+    };
+
     mountMatrix = lib.mkOption {
       type = lib.types.str;
       default = "1,0,0;0,1,0;0,0,1";
@@ -31,7 +52,7 @@ in {
 
       package = lib.mkOption {
         type = lib.types.package;
-        default = pkgs.callPackage ../../pkgs/tablet-mode-daemon.nix {};
+        default = pkgs.callPackage ../../pkgs/tablet-mode-daemon.nix { };
         description = "The tablet mode detection package.";
       };
 
@@ -67,7 +88,7 @@ in {
 
       extraArguments = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [];
+        default = [ ];
         description = "Additional arguments to pass to the tablet-mode service";
       };
     };
@@ -81,7 +102,7 @@ in {
           };
           requiredPackages = lib.mkOption {
             type = lib.types.listOf lib.types.package;
-            default = [pkgs.niri];
+            default = [ pkgs.niri ];
             description = "Packages required for the rotation commands";
           };
           commands = lib.mkOption {
@@ -130,7 +151,7 @@ in {
       };
       default = {
         enable = true;
-        requiredPackages = [pkgs.niri];
+        requiredPackages = [ pkgs.niri ];
         commands = {
           normal = ''niri msg output "DSI-1" transform normal'';
           bottomUp = ''niri msg output "DSI-1" transform 180'';
@@ -144,24 +165,32 @@ in {
 
   config = lib.mkMerge [
     {
-      hardware.sensor.iio.enable = true;
-      boot.extraModulePackages = [
-        (pkgs.callPackage ../../pkgs/tablet-mode-kernel-module.nix {
-          kernel = config.boot.kernelPackages.kernel;
-        })
+      environment.systemPackages = [
+        (pkgs.callPackage ../../pkgs/minibookx-troubleshoot.nix { })
       ];
-      boot.kernelModules = ["chuwi-ltsm-hack"];
+    }
+    (lib.mkIf (cfg.driver == "hack") {
+      hardware.sensor.iio.enable = true;
+      boot.extraModulePackages = [ chuwi-ltsm-hack ];
+      boot.kernelModules = [ "chuwi-ltsm-hack" ];
       boot.extraModprobeConfig = ''
         options intel-hid force_tablet_mode=Y
       '';
 
       environment.systemPackages = [
         pkgs.iio-sensor-proxy
-        (pkgs.callPackage ../../pkgs/minibookx-troubleshoot.nix {})
       ];
-    }
+    })
+    (lib.mkIf (cfg.driver == "platform") {
+      boot.extraModulePackages = [ chuwi-dual-accel ];
+      boot.kernelModules = [ "chuwi-dual-accel" ];
+      boot.kernelPatches = lib.singleton {
+        name = "MDA6655-dual-ac";
+        patch = chuwi-dual-accel.passthru.kernelPatch;
+      };
+    })
     (lib.mkIf cfg.tabletMode.enable {
-      environment.systemPackages = [cfg.tabletMode.package];
+      environment.systemPackages = [ cfg.tabletMode.package ];
     })
   ];
 }
